@@ -1,0 +1,24 @@
+# Node modules (if ever used in the future)
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+*.temp
+
+# VS Code settings
+.vscode/
+
+# Netlify build folder (if future builds are used)
+dist/
+build/
+
+# Backup files
+*.bak
+*.old
