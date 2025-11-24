@@ -595,3 +595,30 @@ body {
   border-color: #22c55e;
   transform: translateY(-1px);
 }
+
+.training-banner {
+  width: 100%;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 10px 20px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-top: 2px solid #334155;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+}
+
+.training-banner .banner-icon {
+  font-size: 16px;
+}
+
+.training-banner strong {
+  color: #f87171;
+  font-weight: 600;
+}
