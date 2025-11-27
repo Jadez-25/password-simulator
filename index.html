@@ -115,7 +115,7 @@
                     </div>
 
                     <div class="terminal-footer">
-                        <span>Training Simulation Mode — Please do NOT use real credentials.</span>
+                        <span>Training Simulation Mode — Please DO NOT use real credentials.</span>
                         <button id="backBtn" class="btn-back">
                             <span>↩ Restart Training</span>
                         </button>
@@ -316,6 +316,7 @@
                 entropyBits = length * Math.log2(charsetSize);
             }
 
+            // Base rating from entropy
             let level = "";
             if (entropyBits < 28) {
                 level = "Very weak";
@@ -326,7 +327,21 @@
             } else {
                 level = "Strong";
             }
+
+            // Common patterns are always very weak
             if (looksCommon) level = "Very weak";
+
+            // Treat long & complex as Strong from 14+ chars
+            if (
+                length >= 14 &&
+                hasLower &&
+                hasUpper &&
+                hasNumber &&
+                hasSymbol &&
+                !looksCommon
+            ) {
+                level = "Strong";
+            }
 
             return {
                 level,
@@ -455,31 +470,36 @@
             const fakeGpuSpeed = (Math.random() * 280 + 120).toFixed(2); // GH/s
             statsLine.textContent = `[RIG] 4x GPU farm online – ~${fakeGpuSpeed} GH/s estimated brute-force speed.`;
 
+            // Analyse THIS password
             const info = analysePassword(password);
 
-            // Slightly slower for stronger passwords so it feels heavier
+            // Visual speed still depends on strength (just for effect)
             const attemptDelay = info.level === "Strong" ? 18 :
                 info.level === "Okay" ? 14 :
                     info.level === "Weak" ? 10 : 7;
             const charPause = 130;
 
-            // - QUICK_CRACK_MS: if cracked before this, we call it "cracked quickly"
-            // - MAX_ATTACK_MS: after this, attacker gives up (user wins)
-            const QUICK_CRACK_MS = 8000; // 8s = "quick crack" threshold
-            const MAX_ATTACK_MS =
-                info.level === "Strong" ? 18000 :  // strong passwords drag attack out
-                    info.level === "Okay" ? 15000 : // okay password
-                        info.level === "Weak" ? 12000 : // weak password
-                            9000;                               // very weak
+            // Decide scenario purely from strength
+            // "quickCrack"  = very weak / weak
+            // "eventualCrack" = okay
+            // "giveUp" = strong
+            let outcome;
+            if (info.level === "Very weak" || info.level === "Weak") {
+                outcome = "quickCrack";
+            } else if (info.level === "Okay") {
+                outcome = "eventualCrack";
+            } else {
+                outcome = "giveUp"; // strong
+            }
 
-            // Start cinematic heartbeat + soundscape
+            // Start cinematic effects
             hackerBase.classList.add("heartbeat");
             darkwebLayout.classList.add("cinematic-in");
             safePlay(sfxAmbient);
             safePlay(sfxTyping);
-            startDynamicHeartbeat(); // dynamic heartbeat instead of safePlay(sfxHeartbeat)
+            startDynamicHeartbeat();
 
-            function finish(crackedQuickly, fullyCracked) {
+            function finish() {
                 attackStopped = true;
                 if (heartbeatInterval) {
                     clearInterval(heartbeatInterval);
@@ -489,34 +509,26 @@
                 stopSound(sfxHeartbeat);
                 stopSound(sfxAmbient);
 
+                const fullyCracked = (outcome === "quickCrack" || outcome === "eventualCrack");
+                const crackedQuickly = (outcome === "quickCrack");
+
                 if (fullyCracked) {
                     progressFill.style.width = "100%";
                 }
 
-                if (crackedQuickly && fullyCracked) {
-                    // LOST – cracked quickly
-                    finalResult.textContent = "[ALERT] Password cracked in a short time. This style would be easy for attackers.";
+                if (outcome === "quickCrack") {
+                    finalResult.textContent = "[ALERT] Password cracked very quickly. This style would be easy for attackers.";
                     finalResult.className = "result-lose";
 
                     playFlatlineTwice(() => {
                         showResultModal(
                             "lose",
                             "YOU LOST",
-                            "The attacker cracked this password quickly in our simulation. Your data is exposed."
+                            "In this simulation, this type of password was cracked quickly. It is too weak."
                         );
                     });
-                } else if (!fullyCracked) {
-                    // WON – attacker gave up
-                    finalResult.textContent = "[INFO] Attack abandoned – password taking too long. Attacker moves on to easier targets.";
-                    finalResult.className = "result-win";
 
-                    showResultModal(
-                        "win",
-                        "YOU WON",
-                        "The attacker gave up on this password in our simulation. This is the level of password strength needed."
-                    );
-                } else {
-                    // LOST – fully cracked but after a long time
+                } else if (outcome === "eventualCrack") {
                     finalResult.textContent = "[ALERT] Password eventually cracked. Longer and more random would be safer.";
                     finalResult.className = "result-lose";
 
@@ -524,9 +536,19 @@
                         showResultModal(
                             "lose",
                             "YOU LOST",
-                            "The attacker eventually cracked this password. Longer and more random passphrases are safer."
+                            "The attacker eventually cracked this password. It still needs more length and randomness."
                         );
                     });
+
+                } else {
+                    finalResult.textContent = "[INFO] Attack abandoned – password taking too long. Attacker moves on to easier targets.";
+                    finalResult.className = "result-win";
+
+                    showResultModal(
+                        "win",
+                        "YOU WON",
+                        "In this simulation, the attacker gave up on this password. This is closer to the strength you should aim for."
+                    );
                 }
 
                 hackerBase.classList.remove("heartbeat");
@@ -534,21 +556,20 @@
             }
 
             function updateProgress() {
-                const elapsed = performance.now() - startTime;
-                const progress = Math.min((elapsed / MAX_ATTACK_MS) * 100, 100);
-                progressFill.style.width = progress + "%";
+                // Progress is based on how many characters are revealed
+                const progress = password.length === 0 ? 0 : Math.min((index / password.length) * 100, 100);
 
-                // Adjust heartbeat speed based on progress
+                progressFill.style.width = progress + "%";
                 updateHeartbeatSpeed(progress);
 
-                const seconds = elapsed / 1000;
-                const guessesPerSecond = seconds > 0 ? (totalGuesses / seconds) : 0;
+                const elapsed = (performance.now() - startTime) / 1000;
+                const guessesPerSecond = elapsed > 0 ? (totalGuesses / elapsed) : 0;
                 const ghps = (guessesPerSecond / 1e9).toFixed(2);
 
                 guessLine.textContent = `[BRUTE] Guesses tried: ${totalGuesses.toLocaleString()}  (~${ghps} GH/s in sim)`;
 
                 const remainingChars = password.length - index;
-                const estPerChar = (chars.length * attemptDelay) / 2 / 1000; // rough
+                const estPerChar = (chars.length * attemptDelay) / 2 / 1000;
                 const etaSeconds = Math.max(0, remainingChars * estPerChar);
                 etaLine.textContent = `[ETA] Estimated remaining time: ~${etaSeconds.toFixed(1)}s`;
             }
@@ -561,19 +582,15 @@
             function crackNextChar() {
                 if (attackStopped) return;
 
-                const now = performance.now();
-                const elapsed = now - startTime;
-
-                if (index >= password.length) {
-                    // Fully cracked – decide if it was "quick" or "eventual"
-                    const crackedQuickly = elapsed <= QUICK_CRACK_MS;
-                    finish(crackedQuickly, true);
+                // If strong, attacker "gives up" around halfway through
+                if (outcome === "giveUp" && index >= Math.ceil(password.length / 2)) {
+                    finish();
                     return;
                 }
 
-                if (elapsed > MAX_ATTACK_MS) {
-                    // give up – not fully cracked (user wins)
-                    finish(false, false);
+                // For weak/okay, we crack the entire password
+                if (index >= password.length) {
+                    finish();
                     return;
                 }
 
@@ -583,19 +600,10 @@
                 function tryGuess() {
                     if (attackStopped) return;
 
-                    const nowInner = performance.now();
-                    const elapsedInner = nowInner - startTime;
-
-                    if (elapsedInner > MAX_ATTACK_MS) {
-                        finish(false, false);
-                        return;
-                    }
-
                     const guessChar = chars[guessIndex];
                     totalGuesses++;
 
-                    const partialDisplay =
-                        revealed + guessChar + "_".repeat(password.length - index - 1);
+                    const partialDisplay = revealed + guessChar + "_".repeat(password.length - index - 1);
                     crackDisplay.textContent = `crack> ${partialDisplay}`;
 
                     updateProgress();
